@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install Sinty OS
+GenericName=System Installer
+Comment=Install Sinty OS on this computer
+Icon=dev.sinty.installer
+Exec=singularity-installer
+Terminal=false
+Categories=System;
+Keywords=install;installer;setup;oobe;
+StartupNotify=true
+StartupWMClass=dev.sinty.installer
+NoDisplay=true

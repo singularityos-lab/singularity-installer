@@ -589,12 +589,15 @@ namespace Singularity.Apps {
                 : install_apply_real ();
         }
 
-        private string lsblk_val (string line, string key) {
-            int i = line.index_of (key + "=\"");
-            if (i < 0) return "";
-            i += key.length + 2;
-            int j = line.index_of ("\"", i);
-            return j < 0 ? "" : line.substring (i, j - i);
+        private string read_first_line (string path) {
+            try {
+                string c;
+                if (FileUtils.get_contents (path, out c)) {
+                    int nl = c.index_of ("\n");
+                    return (nl >= 0 ? c.substring (0, nl) : c).strip ();
+                }
+            } catch (Error e) { }
+            return "";
         }
 
         private void load_disks () {
@@ -606,27 +609,27 @@ namespace Singularity.Apps {
                 return;
             }
             try {
-                string outp;
-                var proc = new Subprocess (SubprocessFlags.STDOUT_PIPE,
-                    "lsblk", "-dnb", "-P", "-o", "NAME,SIZE,MODEL,TRAN,RM,TYPE", null);
-                proc.communicate_utf8 (null, null, out outp, null);
-                foreach (string line in outp.split ("\n")) {
-                    if (line.strip () == "") continue;
-                    if (lsblk_val (line, "TYPE") != "disk") continue;
-                    string nm = lsblk_val (line, "NAME");
-                    if (nm == "") continue;
-                    string model = lsblk_val (line, "MODEL");
-                    string tran = lsblk_val (line, "TRAN");
-                    string rm = lsblk_val (line, "RM");
-                    int64 sz = int64.parse (lsblk_val (line, "SIZE"));
-                    disk_dev   += "/dev/" + nm;
-                    disk_name  += model != "" ? model : nm;
-                    disk_size  += GLib.format_size (sz);
-                    disk_icons += (tran == "usb" || rm == "1") ? "drive-removable-media-usb"
-                                  : (tran == "nvme") ? "drive-harddisk-solidstate" : "drive-harddisk";
+                var dir = Dir.open ("/sys/block", 0);
+                string[] names = {};
+                string? e;
+                while ((e = dir.read_name ()) != null) names += e;
+                foreach (var dev in names) {
+                    if (dev.has_prefix ("loop") || dev.has_prefix ("ram") || dev.has_prefix ("sr")
+                        || dev.has_prefix ("zram") || dev.has_prefix ("dm-") || dev.has_prefix ("md")) continue;
+                    string b = "/sys/block/" + dev;
+                    int64 sectors = int64.parse (read_first_line (b + "/size"));
+                    if (sectors <= 0) continue;
+                    string model = read_first_line (b + "/device/model");
+                    string rot = read_first_line (b + "/queue/rotational");
+                    string rm = read_first_line (b + "/removable");
+                    disk_dev   += "/dev/" + dev;
+                    disk_name  += model != "" ? model : dev;
+                    disk_size  += GLib.format_size (sectors * 512);
+                    disk_icons += rm == "1" ? "drive-removable-media-usb"
+                                  : rot == "0" ? "drive-harddisk-solidstate" : "drive-harddisk";
                 }
-            } catch (Error e) {
-                warning ("lsblk: %s", e.message);
+            } catch (Error err) {
+                warning ("disk scan: %s", err.message);
             }
         }
 

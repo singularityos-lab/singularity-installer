@@ -19,15 +19,10 @@ namespace Singularity.Apps {
             "Francais", "Deutsch", "Portugues (Brasil)"
         };
 
-        private string[] disk_name = {
-            "Samsung SSD 980 PRO", "WDC WD10EZEX", "SanDisk Ultra USB"
-        };
-        private string[] disk_size = { "512 GB", "1.0 TB", "32 GB" };
-        private int64[] disk_bytes = { 512000000000, 1000000000000, 32000000000 };
-        private double[] disk_used = { 0.61, 0.30, 0.82 };
-        private string[] disk_icons = {
-            "drive-harddisk-solidstate", "drive-harddisk", "drive-removable-media-usb"
-        };
+        private string[] disk_name = {};
+        private string[] disk_size = {};
+        private string[] disk_dev = {};
+        private string[] disk_icons = {};
 
         private string sel_language;
         private string sel_keyboard = "";
@@ -77,6 +72,7 @@ namespace Singularity.Apps {
             wizard_count = seq.length - 2;
             set_default_size (940, 680);
 
+            load_disks ();
             build_ui ();
             go_to (0);
 
@@ -303,19 +299,7 @@ namespace Singularity.Apps {
             name_lbl.max_width_chars = 14;
             box.append (name_lbl);
 
-            var bar = new LevelBar ();
-            bar.min_value = 0;
-            bar.max_value = 1;
-            bar.value = disk_used[i];
-            bar.add_css_class ("disk-usage-bar");
-            if (disk_used[i] > 0.9) bar.add_css_class ("disk-usage-high");
-            else if (disk_used[i] > 0.75) bar.add_css_class ("disk-usage-moderate");
-            box.append (bar);
-
-            int64 total = disk_bytes[i];
-            int64 free_b = (int64) (total * (1.0 - disk_used[i]));
-            var size_lbl = new Label ("%s free of %s".printf (
-                GLib.format_size (free_b), GLib.format_size (total)));
+            var size_lbl = new Label (disk_size[i]);
             size_lbl.add_css_class ("dim-label");
             size_lbl.add_css_class ("caption");
             size_lbl.halign = Align.CENTER;
@@ -435,6 +419,7 @@ namespace Singularity.Apps {
             note.add_css_class ("caption");
             note.wrap = true;
             note.justify = Justification.CENTER;
+            note.visible = !applying_real ();
             col.append (note);
 
             return shell_page (col, false);
@@ -594,16 +579,82 @@ namespace Singularity.Apps {
             }
         }
 
+        private bool install_apply_real () {
+            return GLib.Environment.get_variable ("ATOM_INSTALL_APPLY") == "1";
+        }
+
+        private bool applying_real () {
+            return mode == "oobe"
+                ? GLib.Environment.get_variable ("ATOM_OOBE_APPLY") == "1"
+                : install_apply_real ();
+        }
+
+        private string lsblk_val (string line, string key) {
+            int i = line.index_of (key + "=\"");
+            if (i < 0) return "";
+            i += key.length + 2;
+            int j = line.index_of ("\"", i);
+            return j < 0 ? "" : line.substring (i, j - i);
+        }
+
+        private void load_disks () {
+            if (!install_apply_real ()) {
+                disk_name  = { "Samsung SSD 980 PRO", "WDC WD10EZEX", "SanDisk Ultra USB" };
+                disk_size  = { "512 GB", "1.0 TB", "32 GB" };
+                disk_dev   = { "/dev/nvme0n1", "/dev/sda", "/dev/sdb" };
+                disk_icons = { "drive-harddisk-solidstate", "drive-harddisk", "drive-removable-media-usb" };
+                return;
+            }
+            try {
+                string outp;
+                var proc = new Subprocess (SubprocessFlags.STDOUT_PIPE,
+                    "lsblk", "-dnb", "-P", "-o", "NAME,SIZE,MODEL,TRAN,RM,TYPE", null);
+                proc.communicate_utf8 (null, null, out outp, null);
+                foreach (string line in outp.split ("\n")) {
+                    if (line.strip () == "") continue;
+                    if (lsblk_val (line, "TYPE") != "disk") continue;
+                    string nm = lsblk_val (line, "NAME");
+                    if (nm == "") continue;
+                    string model = lsblk_val (line, "MODEL");
+                    string tran = lsblk_val (line, "TRAN");
+                    string rm = lsblk_val (line, "RM");
+                    int64 sz = int64.parse (lsblk_val (line, "SIZE"));
+                    disk_dev   += "/dev/" + nm;
+                    disk_name  += model != "" ? model : nm;
+                    disk_size  += GLib.format_size (sz);
+                    disk_icons += (tran == "usb" || rm == "1") ? "drive-removable-media-usb"
+                                  : (tran == "nvme") ? "drive-harddisk-solidstate" : "drive-harddisk";
+                }
+            } catch (Error e) {
+                warning ("lsblk: %s", e.message);
+            }
+        }
+
         private void start_apply () {
-            if (mode == "oobe") run_firstboot_if_real ();
             progress = 0.0;
             hint_idx = 0;
             ring.fraction = 0.0;
             ring.label = "0%";
             set_stage (0.0);
 
-            int done_idx = seq.length - 1;
+            hint_id = Timeout.add (3400, () => {
+                hint_idx = (hint_idx + 1) % hints.length;
+                install_hint.label = hints[hint_idx];
+                return true;
+            });
 
+            if (mode == "oobe") {
+                run_firstboot_if_real ();
+                simulate_progress ();
+            } else if (install_apply_real ()) {
+                run_install_real ();
+            } else {
+                simulate_progress ();
+            }
+        }
+
+        private void simulate_progress () {
+            int done_idx = seq.length - 1;
             tick_id = Timeout.add (50, () => {
                 progress += 0.0035;
                 if (progress >= 1.0) {
@@ -620,12 +671,42 @@ namespace Singularity.Apps {
                 set_stage (progress);
                 return true;
             });
+        }
 
-            hint_id = Timeout.add (3400, () => {
-                hint_idx = (hint_idx + 1) % hints.length;
-                install_hint.label = hints[hint_idx];
+        private void run_install_real () {
+            if (sel_disk < 0) { install_status.label = "No disk selected"; return; }
+            install_status.label = "Installing " + os_name ();
+            progress = 0.05;
+            ring.fraction = progress;
+            tick_id = Timeout.add (120, () => {
+                if (progress < 0.9) {
+                    progress += 0.01;
+                    ring.fraction = progress;
+                    ring.label = "%d%%".printf ((int) (progress * 100));
+                }
                 return true;
             });
+            try {
+                var proc = new Subprocess (SubprocessFlags.STDERR_MERGE,
+                    "atom-install", disk_dev[sel_disk], null);
+                proc.wait_async.begin (null, (o, r) => {
+                    bool ok = false;
+                    try { proc.wait_async.end (r); ok = proc.get_successful (); } catch (Error e) {}
+                    if (tick_id != 0) { Source.remove (tick_id); tick_id = 0; }
+                    if (ok) {
+                        ring.fraction = 1.0;
+                        ring.label = "100%";
+                        install_status.label = "Finishing up";
+                        Timeout.add (700, () => { go_to (seq.length - 1); return false; });
+                    } else {
+                        install_status.label = "Installation failed";
+                    }
+                });
+            } catch (Error e) {
+                if (tick_id != 0) { Source.remove (tick_id); tick_id = 0; }
+                install_status.label = "Installation failed";
+                warning ("atom-install: %s", e.message);
+            }
         }
 
         private void set_stage (double p) {

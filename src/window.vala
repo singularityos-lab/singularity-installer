@@ -350,8 +350,9 @@ namespace Singularity.Apps {
             account_group = new PreferencesGroup ("Account", "");
             name_row = new EntryRow ("Full name");
             user_row = new EntryRow ("Username");
-            pass_row = new PasswordRow ("Password");
-            confirm_row = new PasswordRow ("Confirm password");
+            bool pin = Singularity.Runtime.is_sinty_os ();
+            pass_row = new PasswordRow (pin ? "PIN" : "Password");
+            confirm_row = new PasswordRow (pin ? "Confirm PIN" : "Confirm password");
             account_group.add_row (name_row);
             account_group.add_row (user_row);
             account_group.add_row (pass_row);
@@ -361,7 +362,7 @@ namespace Singularity.Apps {
             var sys_group = new PreferencesGroup ("System");
             host_row = new EntryRow ("Computer name");
             host_row.text = "sinty";
-            login_row = new SwitchRow ("Require my password to log in", null, true);
+            login_row = new SwitchRow (pin ? "Require my PIN to log in" : "Require my password to log in", null, true);
             sys_group.add_row (host_row);
             sys_group.add_row (login_row);
             col.append (sys_group);
@@ -400,7 +401,8 @@ namespace Singularity.Apps {
 
         private void validate_account () {
             if (confirm_row.text != "" && pass_row.text != confirm_row.text)
-                account_group.description = "The passwords do not match.";
+                account_group.description = Singularity.Runtime.is_sinty_os ()
+                    ? "The PINs do not match." : "The passwords do not match.";
             else
                 account_group.description = "";
             refresh_island ();

@@ -720,9 +720,38 @@ namespace Singularity.Apps {
                 else this.close ();
             });
             actions.append (primary);
-            page.child = actions;
+
+            var content = new Box (Orientation.VERTICAL, 12);
+            content.halign = Align.CENTER;
+            string rec = read_recovery_code ();
+            if (rec != "") {
+                var rtitle = new Label ("Your recovery key");
+                rtitle.add_css_class ("title-3");
+                var rlabel = new Label (rec);
+                rlabel.add_css_class ("title-2");
+                rlabel.selectable = true;
+                var rnote = new Label ("Write it down. It is the only way back to your data if you forget your PIN.");
+                rnote.add_css_class ("dim-label");
+                rnote.wrap = true;
+                rnote.justify = Justification.CENTER;
+                content.append (rtitle);
+                content.append (rlabel);
+                content.append (rnote);
+            }
+            content.append (actions);
+            page.child = content;
 
             return page;
+        }
+
+        private string read_recovery_code () {
+            if (mode != "oobe" || !Singularity.Runtime.is_sinty_os ()) return "";
+            try {
+                string data;
+                if (FileUtils.get_contents ("/run/sinty-recovery-code", out data))
+                    return data.strip ();
+            } catch (Error e) { }
+            return "";
         }
 
 

@@ -42,6 +42,13 @@ namespace Singularity.Apps {
         private PreferencesGroup account_group;
         private PreferencesGroup summary_group;
         private bool user_edited = false;
+        private string sel_avatar = "";
+        private string sel_avatar_custom = "";
+        private string sel_theme = "dual";
+        private Button[] theme_btns = {};
+        private Image[] theme_checks = {};
+        private Avatar add_avatar;
+        private Gee.ArrayList<Avatar> avatar_widgets;
 
         private Singularity.Widgets.CircularProgress ring;
         private Label install_status;
@@ -63,7 +70,7 @@ namespace Singularity.Apps {
             sel_language = languages[0];
 
             if (mode == "oobe") {
-                seq = { "welcome", "keyboard", "account", "review", "progress", "done" };
+                seq = { "welcome", "keyboard", "account", "theme", "review", "progress", "done" };
                 set_title ("Set up " + os_name ());
             } else {
                 seq = { "welcome", "disk", "review", "progress", "done" };
@@ -77,6 +84,31 @@ namespace Singularity.Apps {
             go_to (0);
 
             close_request.connect (() => { stop_timers (); return false; });
+
+            map.connect_after (() => {
+                var clock = get_frame_clock ();
+                if (clock == null) {
+                    GLib.Timeout.add (50, () => { signal_ready (); return GLib.Source.REMOVE; });
+                    return;
+                }
+                ulong handler = 0;
+                handler = clock.after_paint.connect (() => {
+                    clock.disconnect (handler);
+                    signal_ready ();
+                });
+                queue_draw ();
+            });
+        }
+
+        private bool _ready_signalled = false;
+        private void signal_ready () {
+            if (_ready_signalled) return;
+            _ready_signalled = true;
+            var rt = GLib.Environment.get_variable ("XDG_RUNTIME_DIR");
+            if (rt != null && rt != "") {
+                try { GLib.FileUtils.set_contents (rt + "/singularity-shell-ready", ""); }
+                catch (GLib.Error e) {}
+            }
         }
 
 
@@ -115,6 +147,7 @@ namespace Singularity.Apps {
                 case "keyboard": return "Keyboard";
                 case "disk":     return "Disk";
                 case "account":  return "Account";
+                case "theme":    return "Appearance";
                 case "review":   return "Review";
                 default:         return name;
             }
@@ -160,6 +193,7 @@ namespace Singularity.Apps {
                 case "keyboard": return page_keyboard ();
                 case "disk":     return page_disk ();
                 case "account":  return page_account ();
+                case "theme":    return page_theme ();
                 case "review":   return page_summary ();
                 case "progress": return page_install ();
                 case "done":     return page_done ();
@@ -342,15 +376,93 @@ namespace Singularity.Apps {
             refresh_island ();
         }
 
+        private Gtk.Widget page_theme () {
+            var col = new Box (Orientation.VERTICAL, 18);
+            col.append (page_header ("Choose your look",
+                "Dual keeps a dark shell around light apps. Pick what fits, you can change it later in Settings."));
+
+            var fb = new FlowBox ();
+            fb.selection_mode = SelectionMode.NONE;
+            fb.homogeneous = true;
+            fb.column_spacing = 14;
+            fb.row_spacing = 14;
+            fb.halign = Align.CENTER;
+            fb.max_children_per_line = 3;
+            theme_btns = {};
+            theme_checks = {};
+            string[] toks = { "light", "dual", "dark" };
+            string[] labels = { "Light", "Dual", "Dark" };
+            for (int i = 0; i < toks.length; i++)
+                fb.append (make_theme_card (i, toks[i], labels[i]));
+            col.append (fb);
+
+            return shell_page (col, true);
+        }
+
+        private Gtk.Widget make_theme_card (int i, string tok, string label) {
+            var btn = new Button ();
+            btn.add_css_class ("disk-card");
+            btn.set_size_request (210, 190);
+
+            var box = new Box (Orientation.VERTICAL, 8);
+            box.margin_top = 12;
+            box.margin_bottom = 12;
+            box.margin_start = 12;
+            box.margin_end = 12;
+
+            var preview = new Singularity.Widgets.ThemePreview (tok != "light", tok == "dark");
+            preview.hexpand = true;
+            box.append (preview);
+
+            var name_lbl = new Label (label);
+            name_lbl.halign = Align.CENTER;
+            box.append (name_lbl);
+
+            btn.set_child (box);
+
+            var check = new Image.from_icon_name ("object-select-symbolic");
+            check.halign = Align.END;
+            check.valign = Align.START;
+            check.margin_top = 8;
+            check.margin_end = 8;
+            check.add_css_class ("accent-color");
+            check.visible = (tok == sel_theme);
+
+            var ov = new Overlay ();
+            ov.set_child (btn);
+            ov.add_overlay (check);
+
+            btn.clicked.connect (() => select_theme (i, tok));
+            theme_btns += btn;
+            theme_checks += check;
+            if (tok == sel_theme) btn.add_css_class ("selected");
+
+            var fbi = new FlowBoxChild ();
+            fbi.add_css_class ("disk-card-child");
+            fbi.focusable = false;
+            fbi.set_child (ov);
+            return fbi;
+        }
+
+        private void select_theme (int idx, string tok) {
+            sel_theme = tok;
+            for (int i = 0; i < theme_btns.length; i++) {
+                if (i == idx) theme_btns[i].add_css_class ("selected");
+                else theme_btns[i].remove_css_class ("selected");
+                theme_checks[i].visible = (i == idx);
+            }
+            refresh_island ();
+        }
+
         private Gtk.Widget page_account () {
             var col = new Box (Orientation.VERTICAL, 18);
             col.append (page_header ("Create your account",
                 "This is the user you will sign in with."));
 
+            bool pin = Singularity.Runtime.is_sinty_os ();
             account_group = new PreferencesGroup ("Account", "");
             name_row = new EntryRow ("Full name");
             user_row = new EntryRow ("Username");
-            bool pin = Singularity.Runtime.is_sinty_os ();
             pass_row = new PasswordRow (pin ? "PIN" : "Password");
             confirm_row = new PasswordRow (pin ? "Confirm PIN" : "Confirm password");
             account_group.add_row (name_row);
@@ -358,6 +470,9 @@ namespace Singularity.Apps {
             account_group.add_row (pass_row);
             account_group.add_row (confirm_row);
             col.append (account_group);
+
+            var picker = build_avatar_picker ();
+            if (picker != null) col.append (picker);
 
             var sys_group = new PreferencesGroup ("System");
             host_row = new EntryRow ("Computer name");
@@ -379,6 +494,99 @@ namespace Singularity.Apps {
             confirm_row.entry_changed.connect (validate_account);
 
             return shell_page (col, false);
+        }
+
+        private Gtk.Widget? build_avatar_picker () {
+            string dir = "/usr/share/singularity/avatars";
+            var ids = new Gee.ArrayList<string> ();
+            try {
+                var en = File.new_for_path (dir).enumerate_children (
+                    "standard::name", FileQueryInfoFlags.NONE);
+                FileInfo fi;
+                while ((fi = en.next_file ()) != null) {
+                    var nm = fi.get_name ();
+                    if (nm.has_suffix (".png"))
+                        ids.add (nm.substring (0, nm.length - 4));
+                }
+            } catch (Error e) {
+                return null;
+            }
+            if (ids.size == 0) return null;
+            ids.sort ();
+
+            var box = new Box (Orientation.VERTICAL, 8);
+            var label = new Label ("Picture");
+            label.halign = Align.START;
+            label.add_css_class ("dim-label");
+            box.append (label);
+
+            var flow = new FlowBox ();
+            flow.selection_mode = SelectionMode.NONE;
+            flow.max_children_per_line = (uint) ids.size;
+            flow.column_spacing = 14;
+            flow.row_spacing = 14;
+            flow.halign = Align.START;
+
+            avatar_widgets = new Gee.ArrayList<Avatar> ();
+            foreach (var id in ids) {
+                string aid = id;
+                var av = new Avatar (60);
+                av.set_from_file (dir + "/" + aid + ".png");
+                av.set_cursor_from_name ("pointer");
+                av.set_data<string> ("aid", aid);
+                var click = new GestureClick ();
+                click.released.connect (() => { select_avatar (aid); });
+                av.add_controller (click);
+                avatar_widgets.add (av);
+                flow.append (av);
+            }
+
+            add_avatar = new Avatar (60);
+            add_avatar.add_mode = true;
+            add_avatar.set_cursor_from_name ("pointer");
+            var add_click = new GestureClick ();
+            add_click.released.connect (() => { pick_custom_avatar (); });
+            add_avatar.add_controller (add_click);
+            flow.append (add_avatar);
+
+            box.append (flow);
+            select_avatar (ids.get (0));
+            return box;
+        }
+
+        private void select_avatar (string id) {
+            sel_avatar = id;
+            sel_avatar_custom = "";
+            if (add_avatar != null) add_avatar.selected = false;
+            if (avatar_widgets == null) return;
+            foreach (var av in avatar_widgets)
+                av.selected = (av.get_data<string> ("aid") == id);
+        }
+
+        private void pick_custom_avatar () {
+            var dialog = new Gtk.FileDialog ();
+            dialog.title = "Choose Picture";
+            var filter = new Gtk.FileFilter ();
+            filter.name = "Images";
+            filter.add_mime_type ("image/png");
+            filter.add_mime_type ("image/jpeg");
+            filter.add_mime_type ("image/webp");
+            var filters = new GLib.ListStore (typeof (Gtk.FileFilter));
+            filters.append (filter);
+            dialog.filters = filters;
+            var win = this.get_root () as Gtk.Window;
+            dialog.open.begin (win, null, (obj, res) => {
+                try {
+                    var file = dialog.open.end (res);
+                    if (file != null && file.get_path () != null) {
+                        sel_avatar = "";
+                        sel_avatar_custom = file.get_path ();
+                        foreach (var av in avatar_widgets) av.selected = false;
+                        if (add_avatar != null) add_avatar.selected = true;
+                    }
+                } catch (Error e) {
+                }
+            });
         }
 
         private string slugify (string s) {
@@ -444,6 +652,9 @@ namespace Singularity.Apps {
                 summary_group.add_row (new ActionRow ("Login",
                     login_row.active ? "Password required" : "Automatic",
                     icon_or ({ "system-lock-screen-symbolic" }, "dialog-password-symbolic")));
+                summary_group.add_row (new ActionRow ("Appearance",
+                    sel_theme == "light" ? "Light" : (sel_theme == "dark" ? "Dark" : "Dual"),
+                    icon_or ({ "preferences-desktop-appearance-symbolic" }, "preferences-desktop-wallpaper-symbolic")));
             } else {
                 string disk = sel_disk >= 0
                     ? "%s (%s)  will be erased".printf (disk_name[sel_disk], disk_size[sel_disk])
@@ -504,7 +715,10 @@ namespace Singularity.Apps {
             actions.margin_top = 8;
             var primary = new Button.with_label (mode == "oobe" ? "Start using " + os_name () : "Restart now");
             primary.add_css_class ("suggested-action");
-            primary.clicked.connect (() => this.close ());
+            primary.clicked.connect (() => {
+                if (applying_real ()) reboot_system ();
+                else this.close ();
+            });
             actions.append (primary);
             page.child = actions;
 
@@ -562,6 +776,21 @@ namespace Singularity.Apps {
             return plus > 0 ? id.substring (0, plus) : id;
         }
 
+        private void reboot_system () {
+            string[] verbs = { "reboot", "systemctl reboot", "loginctl reboot" };
+            foreach (unowned string verb in verbs) {
+                try {
+                    string[] argv;
+                    GLib.Shell.parse_argv (verb, out argv);
+                    new Subprocess.newv (argv, SubprocessFlags.NONE);
+                    return;
+                } catch (Error e) {
+                    warning ("reboot via %s failed: %s", verb, e.message);
+                }
+            }
+            this.close ();
+        }
+
         private void run_firstboot_if_real () {
             if (mode != "oobe") return;
             if (GLib.Environment.get_variable ("ATOM_OOBE_APPLY") != "1") return;
@@ -574,6 +803,9 @@ namespace Singularity.Apps {
                 launcher.setenv ("OOBE_LOCALE", locale_for (sel_language), true);
                 launcher.setenv ("OOBE_KEYMAP", keymap_for (sel_keyboard_id), true);
                 launcher.setenv ("OOBE_AUTOLOGIN", login_row.active ? "0" : "1", true);
+                launcher.setenv ("OOBE_AVATAR", sel_avatar, true);
+                launcher.setenv ("OOBE_AVATAR_CUSTOM", sel_avatar_custom, true);
+                launcher.setenv ("OOBE_THEME", sel_theme, true);
                 var proc = launcher.spawnv ({ "atom-firstboot" });
                 proc.communicate_utf8 (pass_row.text, null, null, null);
             } catch (Error e) {

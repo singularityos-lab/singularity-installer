@@ -767,11 +767,21 @@ namespace Singularity.Apps {
             if (wizard) island.step = index;
 
             if (name == "review") build_summary ();
+            // The recovery code is written by run_firstboot_if_real (provision) only when
+            // the wizard reaches the end; page_done was pre-built at startup with an empty
+            // /run/sinty-recovery-code. Rebuild it here so it shows the freshly-staged code.
+            if (name == "done") rebuild_done ();
 
             stack.set_visible_child_name (name);
             refresh_island ();
 
             if (name == "progress") start_apply ();
+        }
+
+        private void rebuild_done () {
+            var old = stack.get_child_by_name ("done");
+            if (old != null) stack.remove (old);
+            stack.add_named (build_page ("done"), "done");
         }
 
         private void refresh_island () {
@@ -806,6 +816,7 @@ namespace Singularity.Apps {
         }
 
         private void reboot_system () {
+            try { GLib.Process.spawn_command_line_sync ("sync"); } catch (Error e) {}
             string[] verbs = { "reboot", "systemctl reboot", "loginctl reboot" };
             foreach (unowned string verb in verbs) {
                 try {
@@ -820,9 +831,19 @@ namespace Singularity.Apps {
             this.close ();
         }
 
+        // Run atom-firstboot without ever blocking the GTK thread. communicate_utf8 (the old
+        // synchronous call) froze the whole UI while the backend ran, so a backend that hung
+        // (e.g. a step waiting on a service that is not up) locked the OOBE with no way out and
+        // the user never reached the desktop. Mirror run_install_real: spawn, hand the PIN over
+        // stdin asynchronously, animate the ring meanwhile, advance only on real success, show a
+        // failure state otherwise, and force-kill after a timeout so a hung backend cannot wedge.
         private void run_firstboot_if_real () {
             if (mode != "oobe") return;
-            if (GLib.Environment.get_variable ("ATOM_OOBE_APPLY") != "1") return;
+            if (GLib.Environment.get_variable ("ATOM_OOBE_APPLY") != "1") {
+                simulate_progress ();
+                return;
+            }
+            GLib.Subprocess proc;
             try {
                 var launcher = new GLib.SubprocessLauncher (
                     SubprocessFlags.STDIN_PIPE | SubprocessFlags.STDERR_MERGE);
@@ -835,11 +856,54 @@ namespace Singularity.Apps {
                 launcher.setenv ("OOBE_AVATAR", sel_avatar, true);
                 launcher.setenv ("OOBE_AVATAR_CUSTOM", sel_avatar_custom, true);
                 launcher.setenv ("OOBE_THEME", sel_theme, true);
-                var proc = launcher.spawnv ({ "atom-firstboot" });
-                proc.communicate_utf8 (pass_row.text, null, null, null);
+                proc = launcher.spawnv ({ "atom-firstboot" });
             } catch (Error e) {
-                warning ("firstboot backend failed: %s", e.message);
+                install_status.label = "Setup failed";
+                warning ("firstboot backend failed to start: %s", e.message);
+                return;
             }
+
+            progress = 0.05;
+            ring.fraction = progress;
+            ring.label = "5%";
+            set_stage (progress);
+            tick_id = Timeout.add (120, () => {
+                if (progress < 0.9) {
+                    progress += 0.01;
+                    ring.fraction = progress;
+                    ring.label = "%d%%".printf ((int) (progress * 100));
+                    set_stage (progress);
+                }
+                return true;
+            });
+
+            // Cap the backend: if it does not finish in time, kill it so the callback below runs
+            // with a failure instead of the UI spinning forever.
+            uint fb_timeout = Timeout.add_seconds (90, () => {
+                proc.force_exit ();
+                return false;
+            });
+
+            proc.communicate_utf8_async.begin (pass_row.text, null, (o, r) => {
+                if (fb_timeout != 0) { Source.remove (fb_timeout); fb_timeout = 0; }
+                bool ok = false;
+                try {
+                    proc.communicate_utf8_async.end (r, null, null);
+                    ok = proc.get_successful ();
+                } catch (Error e) {
+                    warning ("firstboot backend failed: %s", e.message);
+                }
+                if (tick_id != 0) { Source.remove (tick_id); tick_id = 0; }
+                if (ok) {
+                    progress = 1.0;
+                    ring.fraction = 1.0;
+                    ring.label = "100%";
+                    set_stage (1.0);
+                    Timeout.add (700, () => { go_to (seq.length - 1); return false; });
+                } else {
+                    install_status.label = "Setup failed";
+                }
+            });
         }
 
         private bool install_apply_real () {
@@ -911,7 +975,6 @@ namespace Singularity.Apps {
 
             if (mode == "oobe") {
                 run_firstboot_if_real ();
-                simulate_progress ();
             } else if (install_apply_real ()) {
                 run_install_real ();
             } else {

@@ -78,6 +78,9 @@ namespace Singularity.Apps {
             }
             wizard_count = seq.length - 2;
             set_default_size (940, 680);
+            if (mode == "oobe") {
+                fullscreen ();
+            }
 
             load_disks ();
             build_ui ();
@@ -463,7 +466,7 @@ namespace Singularity.Apps {
             account_group = new PreferencesGroup ("Account", "");
             name_row = new EntryRow ("Full name");
             user_row = new EntryRow ("Username");
-            pass_row = new PasswordRow (pin ? "PIN" : "Password");
+            pass_row = new PasswordRow (pin ? (has_tpm () ? "PIN" : "Passphrase (12+ characters)") : "Password");
             confirm_row = new PasswordRow (pin ? "Confirm PIN" : "Confirm password");
             account_group.add_row (name_row);
             account_group.add_row (user_row);
@@ -600,10 +603,24 @@ namespace Singularity.Apps {
             return sb.str;
         }
 
+        // A TPM gives a hardware-throttled lockout, so a short PIN is safe. Without one,
+        // sintykey provisions at the software tier (Argon2id) and refuses a short secret:
+        // it needs a passphrase of at least 12 characters.
+        private bool has_tpm () {
+            return GLib.FileUtils.test ("/dev/tpmrm0", GLib.FileTest.EXISTS)
+                || GLib.FileUtils.test ("/dev/tpm0", GLib.FileTest.EXISTS);
+        }
+
+        // On Sinty OS with no TPM the secret must be a 12+ char passphrase, so first-boot
+        // provisioning cannot fail on it. Everywhere else any non-empty secret is fine.
+        private int secret_min () {
+            return (Singularity.Runtime.is_sinty_os () && !has_tpm ()) ? 12 : 1;
+        }
+
         private bool account_valid () {
             return user_row != null
                 && user_row.text.strip () != ""
-                && pass_row.text != ""
+                && pass_row.text.length >= secret_min ()
                 && pass_row.text == confirm_row.text;
         }
 
@@ -611,6 +628,10 @@ namespace Singularity.Apps {
             if (confirm_row.text != "" && pass_row.text != confirm_row.text)
                 account_group.description = Singularity.Runtime.is_sinty_os ()
                     ? "The PINs do not match." : "The passwords do not match.";
+            else if (Singularity.Runtime.is_sinty_os () && !has_tpm () && pass_row.text.length > 0 && pass_row.text.length < 12)
+                account_group.description = "No TPM 2.0 on this device: use a passphrase of at least 12 characters.";
+            else if (Singularity.Runtime.is_sinty_os () && !has_tpm ())
+                account_group.description = "No TPM 2.0: your login will use this passphrase (12+ characters).";
             else
                 account_group.description = "";
             refresh_island ();

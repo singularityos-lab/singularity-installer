@@ -1037,11 +1037,18 @@ namespace Singularity.Apps {
                 return true;
             });
             try {
-                var proc = new Subprocess (SubprocessFlags.STDERR_MERGE,
+                var proc = new Subprocess (
+                    SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE,
                     "atom-install", disk_dev[sel_disk], null);
-                proc.wait_async.begin (null, (o, r) => {
+                proc.communicate_utf8_async.begin (null, null, (o, r) => {
                     bool ok = false;
-                    try { proc.wait_async.end (r); ok = proc.get_successful (); } catch (Error e) {}
+                    string? output = null;
+                    try {
+                        proc.communicate_utf8_async.end (r, out output, null);
+                        ok = proc.get_successful ();
+                    } catch (Error e) {
+                        output = e.message;
+                    }
                     if (tick_id != 0) { Source.remove (tick_id); tick_id = 0; }
                     if (ok) {
                         ring.fraction = 1.0;
@@ -1050,6 +1057,11 @@ namespace Singularity.Apps {
                         Timeout.add (700, () => { go_to (seq.length - 1); return false; });
                     } else {
                         install_status.label = "Installation failed";
+                        string detail = output != null ? output.strip () : "";
+                        if (detail != "") {
+                            install_hint.label = detail;
+                            warning ("atom-install failed: %s", detail);
+                        }
                     }
                 });
             } catch (Error e) {

@@ -1,56 +1,29 @@
 <svg width="236" height="236" viewBox="0 0 236 236" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip_inst)">
-
-<!-- Drive shadow -->
-<rect x="38" y="118" width="160" height="84" rx="16" fill="rgba(0,0,0,0.3)" transform="translate(3,4)"/>
-
-<!-- Drive back layer (depth) -->
-<rect x="37" y="117" width="162" height="86" rx="17" fill="#1e3a5f"/>
-
-<!-- Drive middle layer -->
-<rect x="36" y="115" width="164" height="88" rx="18" fill="#1d4ed8" opacity="0.7"/>
-
-<!-- Drive main body -->
-<rect x="38" y="118" width="160" height="84" rx="16" fill="url(#body_inst)"/>
-
-<!-- Light bloom on drive -->
-<mask id="mask_inst" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="38" y="118" width="160" height="84">
-<rect x="38" y="118" width="160" height="84" rx="16" fill="white"/>
-</mask>
-<g mask="url(#mask_inst)">
-<radialGradient id="bloom_inst" cx="90" cy="128" r="150" gradientUnits="userSpaceOnUse">
-<stop offset="0%" stop-color="white" stop-opacity="0.22"/>
-<stop offset="100%" stop-color="white" stop-opacity="0"/>
-</radialGradient>
-<rect x="38" y="118" width="160" height="84" rx="16" fill="url(#bloom_inst)"/>
-</g>
-
-<!-- Drive slot + activity LED -->
-<rect x="60" y="176" width="116" height="11" rx="5.5" fill="#3b82f6" opacity="0.5"/>
-<circle cx="176" cy="138" r="6" fill="#7dd3fc"/>
-
-<!-- Install arrow (download into the drive) -->
-<g filter="url(#farrow_inst)">
-<rect x="106" y="36" width="24" height="50" rx="6" fill="url(#arrow_inst)"/>
-<path d="M88 80 L148 80 L118 114 Z" fill="url(#arrow_inst)"/>
-</g>
-
-</g>
 <defs>
-<linearGradient id="body_inst" x1="118" y1="118" x2="118" y2="202" gradientUnits="userSpaceOnUse">
-<stop offset="0%" stop-color="#1d4ed8"/>
-<stop offset="50%" stop-color="#1e40af"/>
-<stop offset="100%" stop-color="#1e3a8a"/>
-</linearGradient>
-<linearGradient id="arrow_inst" x1="118" y1="36" x2="118" y2="114" gradientUnits="userSpaceOnUse">
-<stop offset="0%" stop-color="#93c5fd"/>
-<stop offset="100%" stop-color="#60a5fa"/>
-</linearGradient>
-<filter id="farrow_inst" x="82" y="32" width="72" height="92" filterUnits="userSpaceOnUse">
-<feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
-</filter>
-<clipPath id="clip_inst">
-<rect width="236" height="236" fill="white"/>
-</clipPath>
+<linearGradient id="in_body" x1="118" y1="120" x2="118" y2="212" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6b9bf8"/><stop offset="0.55" stop-color="#3a6fe6"/><stop offset="1" stop-color="#2451c4"/></linearGradient>
+<linearGradient id="in_side" x1="0" y1="200" x2="0" y2="222" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1c3f99"/><stop offset="1" stop-color="#142e73"/></linearGradient>
+<linearGradient id="in_arrow" x1="118" y1="18" x2="118" y2="116" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b9d8fe"/></linearGradient>
+<radialGradient id="in_bloom" cx="70" cy="122" r="150" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="white" stop-opacity="0.34"/><stop offset="1" stop-color="white" stop-opacity="0"/></radialGradient>
+<clipPath id="in_clip"><path d="M48 120H188Q214 120 214 146V186Q214 212 188 212H48Q22 212 22 186V146Q22 120 48 120Z"/></clipPath>
+<filter id="in_shadow" x="-20" y="-20" width="276" height="276" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#0a1a4c" flood-opacity="0.42"/></filter>
+<filter id="in_arrow_shadow" x="-20" y="-20" width="276" height="276" filterUnits="userSpaceOnUse"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0f2a78" flood-opacity="0.35"/></filter>
 </defs>
+<g filter="url(#in_shadow)">
+<path d="M48 120H188Q214 120 214 146V186Q214 212 188 212H48Q22 212 22 186V146Q22 120 48 120Z" fill="url(#in_side)" transform="translate(0 10)"/>
+<path d="M48 120H188Q214 120 214 146V186Q214 212 188 212H48Q22 212 22 186V146Q22 120 48 120Z" fill="url(#in_body)"/>
+</g>
+<g clip-path="url(#in_clip)">
+<rect width="236" height="236" fill="url(#in_bloom)"/>
+</g>
+<path d="M48 120H188Q214 120 214 146V186Q214 212 188 212H48Q22 212 22 186V146Q22 120 48 120Z" stroke="white" stroke-opacity="0.28" stroke-width="4" clip-path="url(#in_clip)"/>
+<rect x="44" y="176" width="112" height="14" rx="7" fill="#12307f" opacity="0.55"/>
+<rect x="44" y="184" width="112" height="6" rx="3" fill="white" opacity="0.12"/>
+<circle cx="186" cy="183" r="11" fill="#4fe08c" opacity="0.25"/>
+<circle cx="186" cy="183" r="6" fill="#4fe08c"/>
+<circle cx="184.5" cy="181.5" r="2" fill="white" opacity="0.8"/>
+<g filter="url(#in_arrow_shadow)">
+<path d="M100 20H136V66H160L118 112L76 66H100Z" fill="#6aa8f8" stroke="#6aa8f8" stroke-width="12" stroke-linejoin="round" transform="translate(0 5)"/>
+<path d="M100 20H136V66H160L118 112L76 66H100Z" fill="url(#in_arrow)" stroke="url(#in_arrow)" stroke-width="12" stroke-linejoin="round"/>
+</g>
+<rect x="104" y="18" width="4" height="46" rx="2" fill="white" opacity="0.8"/>
 </svg>

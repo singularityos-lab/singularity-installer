@@ -493,8 +493,8 @@ namespace Singularity.Apps {
             account_group = new PreferencesGroup ("Account", "");
             name_row = new EntryRow ("Full name");
             user_row = new EntryRow ("Username");
-            pass_row = new PasswordRow (pin ? (has_tpm () ? "PIN" : "Passphrase (12+ characters)") : "Password");
-            confirm_row = new PasswordRow (pin ? "Confirm PIN" : "Confirm password");
+            pass_row = new PasswordRow (pin && !has_tpm () ? "Passphrase (12+ characters)" : secret_title ());
+            confirm_row = new PasswordRow ("Confirm " + secret_name ());
             account_group.add_row (name_row);
             account_group.add_row (user_row);
             account_group.add_row (pass_row);
@@ -507,7 +507,7 @@ namespace Singularity.Apps {
             var sys_group = new PreferencesGroup ("System");
             host_row = new EntryRow ("Computer name");
             host_row.text = "sinty";
-            login_row = new SwitchRow (pin ? "Require my PIN to log in" : "Require my password to log in", null, true);
+            login_row = new SwitchRow ("Require my " + secret_name () + " to log in", null, true);
             sys_group.add_row (host_row);
             sys_group.add_row (login_row);
             col.append (sys_group);
@@ -633,6 +633,16 @@ namespace Singularity.Apps {
         // A TPM gives a hardware-throttled lockout, so a short PIN is safe. Without one,
         // sintykey provisions at the software tier (Argon2id) and refuses a short secret:
         // it needs a passphrase of at least 12 characters.
+        private string secret_name () {
+            if (!Singularity.Runtime.is_sinty_os ()) return "password";
+            return has_tpm () ? "PIN" : "passphrase";
+        }
+
+        private string secret_title () {
+            string n = secret_name ();
+            return n == "PIN" ? n : n.substring (0, 1).up () + n.substring (1);
+        }
+
         private bool has_tpm () {
             return GLib.FileUtils.test ("/dev/tpmrm0", GLib.FileTest.EXISTS)
                 || GLib.FileUtils.test ("/dev/tpm0", GLib.FileTest.EXISTS);
@@ -700,7 +710,7 @@ namespace Singularity.Apps {
                 summary_group.add_row (new ActionRow ("Computer name", host_row.text,
                     icon_or ({ "computer-symbolic" }, "network-server-symbolic")));
                 summary_group.add_row (new ActionRow ("Login",
-                    login_row.active ? "PIN required" : "Automatic",
+                    login_row.active ? secret_title () + " required" : "Automatic",
                     icon_or ({ "system-lock-screen-symbolic" }, "dialog-password-symbolic")));
                 summary_group.add_row (new ActionRow ("Appearance",
                     sel_theme == "light" ? "Light" : (sel_theme == "dark" ? "Dark" : "Dual"),

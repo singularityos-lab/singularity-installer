@@ -790,7 +790,7 @@ namespace Singularity.Apps {
                 var rlabel = new Label (rec);
                 rlabel.add_css_class ("title-2");
                 rlabel.selectable = true;
-                var rnote = new Label ("Write it down. It is the only way back to your data if you forget your PIN.");
+                var rnote = new Label ("Write it down. It is the only way back to your data if you forget your " + secret_name () + ".");
                 rnote.add_css_class ("dim-label");
                 rnote.wrap = true;
                 rnote.justify = Justification.CENTER;

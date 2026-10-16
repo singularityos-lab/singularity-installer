@@ -173,12 +173,16 @@ namespace Singularity.Apps {
             stack.transition_type = StackTransitionType.SLIDE_LEFT_RIGHT;
             stack.transition_duration = 220;
 
+            string[] titles = {};
+            for (int i = 0; i < wizard_count; i++) titles += title_for (seq[i]);
+
+            island = new StepIsland (titles);
+            island.next_clicked.connect (on_next);
+            island.back_clicked.connect (() => { if (current > 0) go_to (current - 1); });
+
             foreach (var name in seq) {
                 stack.add_named (build_page (name), name);
             }
-
-            string[] titles = {};
-            for (int i = 0; i < wizard_count; i++) titles += title_for (seq[i]);
 
             var overlay = new Gtk.Overlay ();
             overlay.set_child (stack);
@@ -191,9 +195,6 @@ namespace Singularity.Apps {
             close.clicked.connect (() => this.close ());
             overlay.add_overlay (close);
 
-            island = new StepIsland (titles);
-            island.next_clicked.connect (on_next);
-            island.back_clicked.connect (() => { if (current > 0) go_to (current - 1); });
             overlay.add_overlay (island);
 
             set_content (overlay);

@@ -27,6 +27,13 @@ namespace Singularity.Apps {
         private string sel_language;
         private string sel_keyboard = "";
         private string sel_keyboard_id = "";
+        private Singularity.Widgets.SectionedList? kbd_list = null;
+        private string[] timezones = {};
+        private string sel_timezone = "UTC";
+        private bool tz_picked = false;
+        private SelectionRow? tz_row = null;
+        private bool kbd_picked = false;
+        private bool kbd_auto = false;
         private Gee.HashMap<string, string> kbd_labels;
         private int sel_disk = -1;
         private Gtk.Button[] disk_btns = {};
@@ -68,6 +75,8 @@ namespace Singularity.Apps {
             this.mode = mode;
             this.flat = true;
             sel_language = languages[0];
+            timezones = load_timezones ();
+            sel_timezone = timezone_for (sel_language);
 
             if (mode == "oobe") {
                 seq = { "welcome", "keyboard", "account", "theme", "review", "progress", "done" };
@@ -252,8 +261,23 @@ namespace Singularity.Apps {
 
             var g = new PreferencesGroup ();
             var lang_row = new SelectionRow ("Language", languages, sel_language);
-            lang_row.selected.connect ((v) => { sel_language = v; });
+            lang_row.selected.connect ((v) => {
+                sel_language = v;
+                preselect_keyboard ();
+                if (!tz_picked && tz_row != null) {
+                    sel_timezone = timezone_for (v);
+                    tz_row.current_value = sel_timezone;
+                }
+            });
             g.add_row (lang_row);
+            if (mode == "oobe") {
+                tz_row = new SelectionRow ("Time Zone", timezones, sel_timezone);
+                tz_row.selected.connect ((v) => {
+                    sel_timezone = v;
+                    tz_picked = true;
+                });
+                g.add_row (tz_row);
+            }
             col.append (g);
 
             return shell_page (col, true);
@@ -275,8 +299,11 @@ namespace Singularity.Apps {
             list.selected.connect ((id) => {
                 sel_keyboard_id = id;
                 sel_keyboard = kbd_labels.has_key (id) ? kbd_labels.get (id) : id;
+                if (!kbd_auto) kbd_picked = true;
                 refresh_island ();
             });
+            kbd_list = list;
+            preselect_keyboard ();
             g.add_row (list);
             var wrap = list.get_parent () as Gtk.ListBoxRow;
             if (wrap != null) { wrap.activatable = false; wrap.selectable = false; }
@@ -664,14 +691,16 @@ namespace Singularity.Apps {
                 summary_group.add_row (new ActionRow ("Language", sel_language,
                     icon_or ({ "preferences-desktop-locale-symbolic" }, "dialog-information-symbolic")));
                 summary_group.add_row (new ActionRow ("Keyboard",
-                    sel_keyboard == "" ? "(default)" : sel_keyboard,
+                    sel_keyboard == "" ? "English (US)" : sel_keyboard,
                     icon_or ({ "input-keyboard-symbolic" }, "emblem-system-symbolic")));
                 summary_group.add_row (new ActionRow ("User", user,
                     icon_or ({ "avatar-default-symbolic", "system-users-symbolic" }, "user-home-symbolic")));
+                summary_group.add_row (new ActionRow ("Time Zone", sel_timezone,
+                    icon_or ({ "preferences-system-time-symbolic" }, "alarm-symbolic")));
                 summary_group.add_row (new ActionRow ("Computer name", host_row.text,
                     icon_or ({ "computer-symbolic" }, "network-server-symbolic")));
                 summary_group.add_row (new ActionRow ("Login",
-                    login_row.active ? "Password required" : "Automatic",
+                    login_row.active ? "PIN required" : "Automatic",
                     icon_or ({ "system-lock-screen-symbolic" }, "dialog-password-symbolic")));
                 summary_group.add_row (new ActionRow ("Appearance",
                     sel_theme == "light" ? "Light" : (sel_theme == "dark" ? "Dark" : "Dual"),
@@ -830,6 +859,50 @@ namespace Singularity.Apps {
             return "en_US.UTF-8";
         }
 
+        private static string[] load_timezones () {
+            var zones = new Gee.ArrayList<string> ();
+            try {
+                string content;
+                FileUtils.get_contents ("/usr/share/zoneinfo/zone1970.tab", out content);
+                foreach (var line in content.split ("\n")) {
+                    if (line.has_prefix ("#") || line.strip () == "") continue;
+                    string[] cols = line.split ("\t");
+                    if (cols.length >= 3 && !zones.contains (cols[2])) zones.add (cols[2]);
+                }
+            } catch (Error e) { }
+            zones.sort ((a, b) => strcmp (a, b));
+            if (!zones.contains ("UTC")) zones.insert (0, "UTC");
+            return zones.to_array ();
+        }
+
+        private string timezone_for (string lang) {
+            string tz = "UTC";
+            if (lang.has_prefix ("Italiano")) tz = "Europe/Rome";
+            else if (lang.has_prefix ("Espanol")) tz = "Europe/Madrid";
+            else if (lang.has_prefix ("Francais")) tz = "Europe/Paris";
+            else if (lang.has_prefix ("Deutsch")) tz = "Europe/Berlin";
+            else if (lang.has_prefix ("Portugues")) tz = "America/Sao_Paulo";
+            else if (lang.has_prefix ("English")) tz = "America/New_York";
+            foreach (var z in timezones) if (z == tz) return tz;
+            return "UTC";
+        }
+
+        private string layout_for (string lang) {
+            if (lang.has_prefix ("Italiano")) return "it";
+            if (lang.has_prefix ("Espanol")) return "es";
+            if (lang.has_prefix ("Francais")) return "fr";
+            if (lang.has_prefix ("Deutsch")) return "de";
+            if (lang.has_prefix ("Portugues")) return "br";
+            return "us";
+        }
+
+        private void preselect_keyboard () {
+            if (kbd_picked || kbd_list == null) return;
+            kbd_auto = true;
+            kbd_list.select (layout_for (sel_language));
+            kbd_auto = false;
+        }
+
         private string keymap_for (string id) {
             if (id == "") return "us";
             int plus = id.index_of ("+");
@@ -872,6 +945,7 @@ namespace Singularity.Apps {
                 launcher.setenv ("OOBE_FULLNAME", name_row.text.strip (), true);
                 launcher.setenv ("OOBE_HOSTNAME", host_row.text.strip (), true);
                 launcher.setenv ("OOBE_LOCALE", locale_for (sel_language), true);
+                launcher.setenv ("OOBE_TIMEZONE", sel_timezone, true);
                 launcher.setenv ("OOBE_KEYMAP", keymap_for (sel_keyboard_id), true);
                 launcher.setenv ("OOBE_AUTOLOGIN", login_row.active ? "0" : "1", true);
                 launcher.setenv ("OOBE_AVATAR", sel_avatar, true);
@@ -937,7 +1011,7 @@ namespace Singularity.Apps {
                 : install_apply_real ();
         }
 
-        private string read_first_line (string path) {
+        private static string read_first_line (string path) {
             try {
                 string c;
                 if (FileUtils.get_contents (path, out c)) {
@@ -946,6 +1020,79 @@ namespace Singularity.Apps {
                 }
             } catch (Error e) { }
             return "";
+        }
+
+        private static string[] mount_sources () {
+            string[] out_sources = {};
+            try {
+                string content;
+                FileUtils.get_contents ("/proc/self/mountinfo", out content);
+                foreach (var line in content.split ("\n")) {
+                    int sep = line.index_of (" - ");
+                    if (sep < 0) continue;
+                    string[] head = line.substring (0, sep).split (" ");
+                    string[] tail = line.substring (sep + 3).split (" ");
+                    if (head.length < 5 || tail.length < 2) continue;
+                    out_sources += head[4] + "\t" + tail[1];
+                }
+            } catch (Error e) { }
+            return out_sources;
+        }
+
+        private static string? device_of_path (string path, string[] sources) {
+            string best = "";
+            string? dev = null;
+            foreach (var entry in sources) {
+                string[] parts = entry.split ("\t", 2);
+                string point = parts[0];
+                bool under = path == point || path.has_prefix (point == "/" ? "/" : point + "/");
+                if (under && point.length >= best.length && parts[1].has_prefix ("/dev/")) {
+                    best = point;
+                    dev = parts[1];
+                }
+            }
+            return dev;
+        }
+
+        private static void collect_disks (string name, string[] sources, Gee.HashSet<string> disks, int depth) {
+            if (depth > 8) return;
+            string sys = "/sys/class/block/" + name;
+            if (name.has_prefix ("loop")) {
+                string backing = read_first_line ("/sys/block/" + name + "/loop/backing_file");
+                if (backing == "") return;
+                string? dev = device_of_path (backing, sources);
+                if (dev != null) collect_disks (Path.get_basename (dev), sources, disks, depth + 1);
+                return;
+            }
+            try {
+                var slaves = Dir.open (sys + "/slaves", 0);
+                string? s;
+                bool any = false;
+                while ((s = slaves.read_name ()) != null) {
+                    any = true;
+                    collect_disks (s, sources, disks, depth + 1);
+                }
+                if (any) return;
+            } catch (Error e) { }
+            if (FileUtils.test (sys + "/partition", FileTest.EXISTS)) {
+                try {
+                    string real = FileUtils.read_link (sys);
+                    disks.add (Path.get_basename (Path.get_dirname (Path.build_filename ("/sys/class/block", real))));
+                } catch (Error e) { }
+            } else {
+                disks.add (name);
+            }
+        }
+
+        private static Gee.HashSet<string> disks_in_use () {
+            var disks = new Gee.HashSet<string> ();
+            var sources = mount_sources ();
+            foreach (var entry in sources) {
+                string dev = entry.split ("\t", 2)[1];
+                if (!dev.has_prefix ("/dev/")) continue;
+                collect_disks (Path.get_basename (dev), sources, disks, 0);
+            }
+            return disks;
         }
 
         private void load_disks () {
@@ -957,6 +1104,7 @@ namespace Singularity.Apps {
                 return;
             }
             try {
+                var in_use = disks_in_use ();
                 var dir = Dir.open ("/sys/block", 0);
                 string[] names = {};
                 string? e;
@@ -964,6 +1112,7 @@ namespace Singularity.Apps {
                 foreach (var dev in names) {
                     if (dev.has_prefix ("loop") || dev.has_prefix ("ram") || dev.has_prefix ("sr")
                         || dev.has_prefix ("zram") || dev.has_prefix ("dm-") || dev.has_prefix ("md")) continue;
+                    if (in_use.contains (dev)) continue;
                     string b = "/sys/block/" + dev;
                     int64 sectors = int64.parse (read_first_line (b + "/size"));
                     if (sectors <= 0) continue;

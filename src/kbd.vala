@@ -29,7 +29,7 @@ namespace Singularity.Apps {
 
                     string name = child_text (ci, "name");
                     string desc = child_text (ci, "description");
-                    if (name == "") continue;
+                    if (name == "" || name == "custom") continue;
 
                     string iso_code = "";
                     Xml.Node* ll = find_child (ci, "languageList");

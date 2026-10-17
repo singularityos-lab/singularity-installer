@@ -49,6 +49,7 @@ namespace Singularity.Apps {
         private PreferencesGroup account_group;
         private PreferencesGroup summary_group;
         private bool user_edited = false;
+        private bool syncing_user = false;
         private string sel_avatar = "";
         private string sel_avatar_custom = "";
         private string sel_theme = "dual";
@@ -514,11 +515,15 @@ namespace Singularity.Apps {
             col.append (sys_group);
 
             name_row.entry_changed.connect (() => {
-                if (!user_edited) user_row.text = slugify (name_row.text);
+                if (!user_edited) {
+                    syncing_user = true;
+                    user_row.text = slugify (name_row.text);
+                    syncing_user = false;
+                }
                 validate_account ();
             });
             user_row.entry_changed.connect (() => {
-                user_edited = user_row.text != "";
+                if (!syncing_user) user_edited = user_row.text != "";
                 validate_account ();
             });
             pass_row.entry_changed.connect (validate_account);

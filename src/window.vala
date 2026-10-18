@@ -969,7 +969,9 @@ namespace Singularity.Apps {
                 launcher.setenv ("OOBE_THEME", sel_theme, true);
                 proc = launcher.spawnv ({ "atom-firstboot" });
             } catch (Error e) {
+                stop_timers ();
                 install_status.label = "Setup failed";
+                install_hint.label = e.message;
                 warning ("firstboot backend failed to start: %s", e.message);
                 return;
             }
@@ -1012,6 +1014,7 @@ namespace Singularity.Apps {
                     set_stage (1.0);
                     Timeout.add (700, () => { go_to (seq.length - 1); return false; });
                 } else {
+                    stop_timers ();
                     install_status.label = "Setup failed";
                 }
             });
@@ -1221,6 +1224,7 @@ namespace Singularity.Apps {
                         install_status.label = "Finishing up";
                         Timeout.add (700, () => { go_to (seq.length - 1); return false; });
                     } else {
+                        stop_timers ();
                         install_status.label = "Installation failed";
                         string detail = output != null ? output.strip () : "";
                         if (detail != "") {
@@ -1231,7 +1235,9 @@ namespace Singularity.Apps {
                 });
             } catch (Error e) {
                 if (tick_id != 0) { Source.remove (tick_id); tick_id = 0; }
+                stop_timers ();
                 install_status.label = "Installation failed";
+                install_hint.label = e.message;
                 warning ("atom-install: %s", e.message);
             }
         }

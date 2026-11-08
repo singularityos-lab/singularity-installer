@@ -36,6 +36,11 @@ namespace Singularity.Apps {
         private bool kbd_auto = false;
         private Gee.HashMap<string, string> kbd_labels;
         private int sel_disk = -1;
+        private string[] all_disk_name = {};
+        private string[] all_disk_size = {};
+        private string[] all_disk_dev = {};
+        private string[] all_disk_icons = {};
+        private bool make_key = false;
         private Gtk.Button[] disk_btns = {};
         private Gtk.Image[] disk_checks = {};
         private Label disk_warning;
@@ -74,6 +79,10 @@ namespace Singularity.Apps {
         public InstallerWindow (Gtk.Application app, string mode) {
             base (app);
             this.mode = mode;
+            if (mode == "key") {
+                this.mode = "install";
+                make_key = true;
+            }
             this.flat = true;
             sel_language = languages[0];
             timezones = load_timezones ();
@@ -84,7 +93,7 @@ namespace Singularity.Apps {
                 set_title ("Set up " + os_name ());
             } else {
                 seq = { "welcome", "disk", "review", "progress", "done" };
-                set_title ("Install " + os_name ());
+                set_title ((make_key ? "Create a Sinty Key with " : "Install ") + os_name ());
             }
             wizard_count = seq.length - 2;
             set_default_size (940, 680);
@@ -93,6 +102,11 @@ namespace Singularity.Apps {
             }
 
             load_disks ();
+            all_disk_name = disk_name;
+            all_disk_size = disk_size;
+            all_disk_dev = disk_dev;
+            all_disk_icons = disk_icons;
+            filter_disks ();
             build_ui ();
             go_to (0);
 
@@ -258,7 +272,7 @@ namespace Singularity.Apps {
 
             string sub = mode == "oobe"
                 ? "Let's get this computer ready for you. It only takes a moment."
-                : "This assistant will install the system on this computer.";
+                : "This assistant installs the system on this computer or on a Sinty Key.";
             col.append (page_header ("Welcome to " + os_name (), sub));
 
             var g = new PreferencesGroup ();
@@ -272,6 +286,15 @@ namespace Singularity.Apps {
                 }
             });
             g.add_row (lang_row);
+            if (mode != "oobe") {
+                string[] targets = { "This computer", "A Sinty Key" };
+                var target_row = new SelectionRow ("Install on", targets, targets[make_key ? 1 : 0]);
+                target_row.selected.connect ((v) => {
+                    make_key = v == targets[1];
+                    rebuild_disk_page ();
+                });
+                g.add_row (target_row);
+            }
             if (mode == "oobe") {
                 tz_row = new SelectionRow ("Time Zone", timezones, sel_timezone);
                 tz_row.selected.connect ((v) => {
@@ -317,10 +340,41 @@ namespace Singularity.Apps {
             return shell_page (col, false);
         }
 
+        private void filter_disks () {
+            disk_name = {};
+            disk_size = {};
+            disk_dev = {};
+            disk_icons = {};
+            for (int i = 0; i < all_disk_dev.length; i++) {
+                if (make_key && all_disk_icons[i] != "drive-removable-media-usb") continue;
+                disk_name += all_disk_name[i];
+                disk_size += all_disk_size[i];
+                disk_dev += all_disk_dev[i];
+                disk_icons += all_disk_icons[i];
+            }
+        }
+
+        private void rebuild_disk_page () {
+            sel_disk = -1;
+            filter_disks ();
+            disk_btns = {};
+            disk_checks = {};
+            var old = stack.get_child_by_name ("disk");
+            if (old != null) stack.remove (old);
+            stack.add_named (build_page ("disk"), "disk");
+            set_title ((make_key ? "Create a Sinty Key with " : "Install ") + os_name ());
+            refresh_island ();
+        }
+
         private Gtk.Widget page_disk () {
             var col = new Box (Orientation.VERTICAL, 18);
-            col.append (page_header ("Where to install",
-                "Sinty OS installs a verified, read-only system image and uses the entire disk. The disk you choose will be completely erased."));
+            if (make_key) {
+                col.append (page_header ("Choose the drive for your Sinty Key",
+                    "The Key carries the whole system and your encrypted files, and starts on any computer with your PIN. The drive you choose will be completely erased."));
+            } else {
+                col.append (page_header ("Where to install",
+                    "Sinty OS installs a verified, read-only system image and uses the entire disk. The disk you choose will be completely erased."));
+            }
 
             var fb = new FlowBox ();
             fb.selection_mode = SelectionMode.NONE;
@@ -331,6 +385,22 @@ namespace Singularity.Apps {
             fb.max_children_per_line = 3;
             for (int i = 0; i < disk_name.length; i++) fb.append (make_disk_card (i));
             col.append (fb);
+
+            if (disk_name.length == 0 && make_key) {
+                var empty = new Singularity.Widgets.StatusPage ();
+                empty.icon_name = "drive-removable-media-symbolic";
+                empty.title = "No USB drive found";
+                empty.description = "Connect the USB drive that will become your Sinty Key, then choose A Sinty Key again on the first page.";
+                empty.vexpand = true;
+                col.append (empty);
+            } else if (disk_name.length == 0) {
+                var empty = new Singularity.Widgets.StatusPage ();
+                empty.icon_name = "drive-harddisk-symbolic";
+                empty.title = "No disk found";
+                empty.description = "This computer has no internal disk Sinty OS can install on. Check that the disk is connected and enabled in the firmware settings, then start the installer again.";
+                empty.vexpand = true;
+                col.append (empty);
+            }
 
             disk_warning = new Label ("");
             disk_warning.add_css_class ("dim-label");
@@ -727,8 +797,8 @@ namespace Singularity.Apps {
                     : "(none)";
                 summary_group.add_row (new ActionRow ("Language", sel_language,
                     icon_or ({ "preferences-desktop-locale-symbolic" }, "dialog-information-symbolic")));
-                summary_group.add_row (new ActionRow ("Disk", disk,
-                    icon_or ({ "drive-harddisk-symbolic" }, "drive-harddisk-symbolic")));
+                summary_group.add_row (new ActionRow (make_key ? "Sinty Key" : "Disk", disk,
+                    icon_or ({ make_key ? "drive-removable-media-symbolic" : "drive-harddisk-symbolic" }, "drive-harddisk-symbolic")));
             }
         }
 
@@ -854,7 +924,7 @@ namespace Singularity.Apps {
             string name = seq[current];
             island.back_visible = current >= 1 && current < wizard_count;
             if (name == "welcome") island.next_label = "Get started";
-            else if (name == "review") island.next_label = (mode == "oobe") ? "Finish setup" : "Install Sinty OS";
+            else if (name == "review") island.next_label = (mode == "oobe") ? "Finish setup" : (make_key ? "Create Sinty Key" : "Install Sinty OS");
             else island.next_label = "Next";
             island.next_enabled = step_valid (name);
         }
@@ -1193,7 +1263,7 @@ namespace Singularity.Apps {
 
         private void run_install_real () {
             if (sel_disk < 0) { install_status.label = "No disk selected"; return; }
-            install_status.label = "Installing " + os_name ();
+            install_status.label = make_key ? "Creating your Sinty Key" : "Installing " + os_name ();
             progress = 0.05;
             ring.fraction = progress;
             tick_id = Timeout.add (120, () => {
@@ -1207,7 +1277,7 @@ namespace Singularity.Apps {
             try {
                 var proc = new Subprocess (
                     SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_MERGE,
-                    "atom-install", disk_dev[sel_disk], null);
+                    "atom-install", make_key ? "--key" : disk_dev[sel_disk], make_key ? disk_dev[sel_disk] : null, null);
                 proc.communicate_utf8_async.begin (null, null, (o, r) => {
                     bool ok = false;
                     string? output = null;

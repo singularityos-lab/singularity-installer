@@ -9,6 +9,7 @@ namespace Singularity.Apps {
         string[] filtered = {};
         foreach (var a in args) {
             if (a == "--oobe") mode = "oobe";
+            else if (a == "--key") mode = "key";
             else filtered += a;
         }
 

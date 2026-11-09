@@ -720,6 +720,12 @@ namespace Singularity.Apps {
         }
 
         private bool has_tpm () {
+            string tier;
+            try {
+                if (GLib.FileUtils.get_contents ("/run/sinty-key/tier", out tier))
+                    return tier.has_prefix ("tpm");
+            } catch (GLib.FileError e) {
+            }
             return GLib.FileUtils.test ("/dev/tpmrm0", GLib.FileTest.EXISTS)
                 || GLib.FileUtils.test ("/dev/tpm0", GLib.FileTest.EXISTS);
         }

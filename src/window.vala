@@ -879,11 +879,80 @@ namespace Singularity.Apps {
                 content.append (rtitle);
                 content.append (rlabel);
                 content.append (rnote);
+                content.append (security_key_box ());
             }
             content.append (actions);
             page.child = content;
 
             return page;
+        }
+
+        private Gtk.Widget security_key_box () {
+            var box = new Box (Orientation.VERTICAL, 6);
+            box.margin_top = 12;
+            box.halign = Align.CENTER;
+            var title = new Label ("Security key");
+            title.add_css_class ("title-3");
+            var note = new Label ("With a FIDO2 security key your account opens only when the key is touched, together with your " + secret_name () + ". You can add a spare later in Settings.");
+            note.add_css_class ("dim-label");
+            note.wrap = true;
+            note.max_width_chars = 60;
+            note.justify = Justification.CENTER;
+            var key_pin = new PasswordRow ("Security key PIN, if it has one");
+            var add = new Button.with_label ("Add a Security Key");
+            add.halign = Align.CENTER;
+            var status = new Label ("");
+            status.add_css_class ("dim-label");
+            status.wrap = true;
+            status.justify = Justification.CENTER;
+            status.visible = false;
+            add.clicked.connect (() => add_security_key.begin (add, key_pin, status));
+            box.append (title);
+            box.append (note);
+            box.append (key_pin);
+            box.append (add);
+            box.append (status);
+            return box;
+        }
+
+        private static string security_key_message (string output) {
+            string[] codes = {
+                "security-key-absent", "Plug in the security key, then try again.",
+                "security-key-untouched", "The security key was not touched in time.",
+                "security-key-pin-required", "This security key has its own PIN. Enter it too.",
+                "security-key-pin-invalid", "The PIN of the security key is not correct.",
+                "security-key-pin-blocked", "The PIN of the security key is blocked.",
+                "security-key-unsupported", "This security key cannot keep a secret for the computer.",
+                "security-key-exists", "This security key is already added."
+            };
+            for (int i = 0; i < codes.length; i += 2) {
+                if (codes[i] in output) return codes[i + 1];
+            }
+            return "The security key could not be added.";
+        }
+
+        private async void add_security_key (Button add, PasswordRow key_pin, Label status) {
+            unowned Posix.Passwd? pw = Posix.getpwnam (user_row.text.strip ());
+            if (pw == null) return;
+            add.sensitive = false;
+            status.visible = true;
+            status.label = "Plug in the security key and touch it when it blinks, up to two times…";
+            try {
+                var launcher = new GLib.SubprocessLauncher (SubprocessFlags.STDIN_PIPE | SubprocessFlags.STDERR_PIPE);
+                var proc = launcher.spawnv ({ "/usr/bin/sintykey", "add-security-key", "--uid", ((uint) pw.pw_uid).to_string (), "--name", "Security Key" });
+                string? err;
+                yield proc.communicate_utf8_async (pass_row.text + "\n" + key_pin.text + "\n", null, null, out err);
+                if (proc.get_if_exited () && proc.get_exit_status () == 0) {
+                    status.label = "The security key was added.";
+                    key_pin.visible = false;
+                    add.visible = false;
+                    return;
+                }
+                status.label = security_key_message (err ?? "");
+            } catch (Error e) {
+                status.label = e.message;
+            }
+            add.sensitive = true;
         }
 
         private string read_recovery_code () {

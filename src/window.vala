@@ -880,6 +880,7 @@ namespace Singularity.Apps {
                 content.append (rlabel);
                 content.append (rnote);
                 content.append (security_key_box ());
+                content.append (bring_home_box ());
             }
             content.append (actions);
             page.child = content;
@@ -913,6 +914,79 @@ namespace Singularity.Apps {
             box.append (add);
             box.append (status);
             return box;
+        }
+
+        private Gtk.Widget bring_home_box () {
+            var box = new Box (Orientation.VERTICAL, 6);
+            box.margin_top = 12;
+            box.halign = Align.CENTER;
+            var title = new Label ("Bring your home");
+            title.add_css_class ("title-3");
+            var note = new Label ("Plug in the Sinty Key that holds your home and enter its PIN. Your files and settings are copied into this account and every file is checked.");
+            note.add_css_class ("dim-label");
+            note.wrap = true;
+            note.max_width_chars = 60;
+            note.justify = Justification.CENTER;
+            var pin = new PasswordRow ("PIN of the Key");
+            var go = new Button.with_label ("Bring My Home");
+            go.halign = Align.CENTER;
+            var status = new Label ("");
+            status.add_css_class ("dim-label");
+            status.wrap = true;
+            status.justify = Justification.CENTER;
+            status.visible = false;
+            go.clicked.connect (() => bring_home.begin (go, pin, status));
+            box.append (title);
+            box.append (note);
+            box.append (pin);
+            box.append (go);
+            box.append (status);
+            return box;
+        }
+
+        private async void bring_home (Button go, PasswordRow pin, Label status) {
+            const string KEYD = "dev.sinty.Key1";
+            const string KEYD_PATH = "/dev/sinty/Key1";
+            string user = user_row.text.strip ();
+            if (pin.text == "" || user == "") return;
+            go.sensitive = false;
+            status.visible = true;
+            status.label = "Looking for your Sinty Key…";
+            uint sub = 0;
+            DBusConnection? bus = null;
+            try {
+                bus = yield Bus.get (BusType.SYSTEM);
+                var reply = yield bus.call (KEYD, KEYD_PATH, "org.freedesktop.DBus.Properties", "Get",
+                    new Variant ("(ss)", KEYD, "Present"), new VariantType ("(v)"), DBusCallFlags.NONE, -1);
+                var present = reply.get_child_value (0).get_variant ();
+                if (present.n_children () == 0) {
+                    status.label = "Plug in your Sinty Key, then try again.";
+                    go.sensitive = true;
+                    return;
+                }
+                string device = present.get_child_value (0).get_child_value (0).get_string ();
+                status.label = "Opening the Key…";
+                var opened = yield bus.call (KEYD, KEYD_PATH, KEYD, "Open", new Variant ("(ss)", device, pin.text),
+                    new VariantType ("(ss)"), DBusCallFlags.NONE, 120000);
+                string root = opened.get_child_value (0).get_string ();
+                status.label = "Copying your home…";
+                sub = bus.signal_subscribe (KEYD, KEYD, "Progress", KEYD_PATH, null, DBusSignalFlags.NONE, (c, sender, path, iface, name, args) => {
+                    if (!args.is_of_type (new VariantType ("(su)")) || args.get_child_value (0).get_string () != root) return;
+                    uint pct = args.get_child_value (1).get_uint32 ();
+                    status.label = pct < 70 ? "Copying your home… %u%%".printf (pct * 100 / 70) : "Checking every file… %u%%".printf ((pct - 70) * 100 / 30);
+                });
+                yield bus.call (KEYD, KEYD_PATH, KEYD, "MoveHome", new Variant ("(sss)", root, user, "from-key"),
+                    null, DBusCallFlags.NONE, int.MAX);
+                yield bus.call (KEYD, KEYD_PATH, KEYD, "Lock", new Variant ("(s)", root), null, DBusCallFlags.NONE, -1);
+                status.label = "Your home is here. It stays on the Key too, until you delete it there from Settings.";
+                pin.visible = false;
+                go.visible = false;
+            } catch (Error e) {
+                DBusError.strip_remote_error (e);
+                status.label = e.message;
+                go.sensitive = true;
+            }
+            if (sub != 0 && bus != null) bus.signal_unsubscribe (sub);
         }
 
         private static string security_key_message (string output) {

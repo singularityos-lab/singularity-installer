@@ -230,11 +230,12 @@ namespace Singularity.Apps {
         }
 
         private Gtk.Widget shell_page (Gtk.Box col, bool center) {
-            col.halign = Align.CENTER;
-            col.set_size_request (560, -1);
             col.margin_top = 48;
             col.margin_bottom = 120;
-            if (center) col.valign = Align.CENTER;
+            col.margin_start = 16;
+            col.margin_end = 16;
+            var clamp = new Singularity.Widgets.Clamp (col, 592);
+            if (center) clamp.valign = Align.CENTER;
             var scroll = new ScrolledWindow ();
             scroll.hscrollbar_policy = PolicyType.NEVER;
             scroll.hexpand = true;
@@ -249,6 +250,8 @@ namespace Singularity.Apps {
             box.margin_bottom = 6;
             var t = new Label (title);
             t.add_css_class ("title-1");
+            t.wrap = true;
+            t.justify = Justification.CENTER;
             box.append (t);
             if (subtitle != "") {
                 var s = new Label (subtitle);
@@ -816,9 +819,8 @@ namespace Singularity.Apps {
 
         private Gtk.Widget page_install () {
             var col = new Box (Orientation.VERTICAL, 22);
-            col.halign = Align.CENTER;
-            col.valign = Align.CENTER;
-            col.set_size_request (560, -1);
+            col.margin_start = 16;
+            col.margin_end = 16;
 
             ring = new Singularity.Widgets.CircularProgress (148);
             ring.add_css_class ("accent-color");
@@ -837,7 +839,9 @@ namespace Singularity.Apps {
             install_hint.justify = Justification.CENTER;
             col.append (install_hint);
 
-            return col;
+            var clamp = new Singularity.Widgets.Clamp (col, 592);
+            clamp.valign = Align.CENTER;
+            return clamp;
         }
 
         private Gtk.Widget page_done () {

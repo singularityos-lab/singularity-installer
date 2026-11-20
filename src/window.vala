@@ -240,7 +240,7 @@ namespace Singularity.Apps {
             scroll.hscrollbar_policy = PolicyType.NEVER;
             scroll.hexpand = true;
             scroll.vexpand = true;
-            scroll.set_child (col);
+            scroll.set_child (clamp);
             return scroll;
         }
 

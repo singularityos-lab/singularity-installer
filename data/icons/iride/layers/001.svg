@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="236" height="236" viewBox="0 0 236 236" fill="none"><defs><linearGradient id="in_body" x1="118" y1="120" x2="118" y2="212" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6b9bf8" /><stop offset="0.55" stop-color="#3a6fe6" /><stop offset="1" stop-color="#2451c4" /></linearGradient>
+</defs><path d="M48 120H188Q214 120 214 146V186Q214 212 188 212H48Q22 212 22 186V146Q22 120 48 120Z" fill="url(#in_body)" />
+</svg>

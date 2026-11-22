@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="236" height="236" viewBox="0 0 236 236" fill="none"><defs><linearGradient id="in_arrow" x1="118" y1="18" x2="118" y2="116" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" /><stop offset="1" stop-color="#b9d8fe" /></linearGradient>
+</defs><path d="M100 20H136V66H160L118 112L76 66H100Z" fill="url(#in_arrow)" stroke="url(#in_arrow)" stroke-width="12" stroke-linejoin="round" />
+</svg>
